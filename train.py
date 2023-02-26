@@ -164,6 +164,8 @@ def main():
             best_val_loss = val_loss
             torch.save(model.state_dict(), os.path.join(save_dir, 'model.pt'))
 
+    print(f'Best validation loss: {best_val_loss:.4f}\n')
+
 
 if __name__ == '__main__':
     main()
