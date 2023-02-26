@@ -32,6 +32,7 @@ def get_args():
 
     # training parameters
     parser.add_argument('--batch_size', type=int, default=1024)
+    parser.add_argument('--num_accumulation_steps', type=int, default=1)
     parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--num_epochs', type=int, default=10)
     parser.add_argument('--num_warmup_steps', type=int, default=None,
@@ -47,24 +48,27 @@ def get_args():
     return args
 
 
-def train_epoch(model, data_loader, optimizer, scaler, scheduler, epoch, device, amp=False):
+def train_epoch(model, data_loader, optimizer, scaler, scheduler, epoch, device, amp=False, num_accumulation_steps=1):
     model.train()
+    optimizer.zero_grad()
     with tqdm(total=len(data_loader) * data_loader.batch_size, desc=f'Epoch {epoch}') as progress_bar:
-        for x, attn_mask, y in data_loader:
+        for i, (x, attn_mask, y) in enumerate(data_loader, 1):
             x, attn_mask, y = x.to(device), attn_mask.to(device), y.to(device)
 
             with autocast(enabled=amp):
                 preds = model(x, attn_mask)
-                loss = F.l1_loss(input=preds, target=y, reduction='mean')
+                loss = F.l1_loss(input=preds, target=y, reduction='mean') / num_accumulation_steps
 
             scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
-            optimizer.zero_grad()
-            scheduler.step()
+
+            if i % num_accumulation_steps == 0:
+                scaler.step(optimizer)
+                scaler.update()
+                optimizer.zero_grad()
+                scheduler.step()
 
             progress_bar.update(len(x))
-            progress_bar.set_postfix(loss=f'{loss.item():.4f}')
+            progress_bar.set_postfix(loss=f'{loss.item() * num_accumulation_steps:.4f}')
 
 
 @torch.no_grad()
@@ -126,7 +130,7 @@ def main():
     best_val_loss = None
     for epoch in range(1, args.num_epochs + 1):
         train_epoch(model=model, data_loader=train_loader, optimizer=optimizer, scaler=scaler, scheduler=scheduler,
-                    epoch=epoch, device=args.device, amp=args.amp)
+                    epoch=epoch, device=args.device, amp=args.amp, num_accumulation_steps=args.num_accumulation_steps)
 
         val_loss = evaluate(model=model, data_loader=val_loader, device=args.device, amp=args.amp)
 
