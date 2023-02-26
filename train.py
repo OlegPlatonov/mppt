@@ -1,5 +1,6 @@
 import os
 import argparse
+import yaml
 from tqdm import tqdm
 
 import torch
@@ -111,6 +112,9 @@ def main():
 
     save_dir = get_save_dir(base_dir=args.save_dir, name=args.name)
     print(f'Results will be saved to {save_dir}.')
+
+    with open(os.path.join(save_dir, 'args.yaml'), 'w') as file:
+        yaml.safe_dump(vars(args), file, sort_keys=False)
 
     tb_writer = SummaryWriter(log_dir=save_dir)
 
