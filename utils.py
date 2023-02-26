@@ -1,4 +1,17 @@
+import os
 import torch
+
+
+def get_save_dir(base_dir, name):
+    idx = 1
+    save_dir = os.path.join(base_dir, f'{name}_{idx:02d}')
+    while os.path.exists(save_dir):
+        idx += 1
+        save_dir = os.path.join(base_dir, f'{name}_{idx:02d}')
+
+    os.makedirs(save_dir)
+
+    return save_dir
 
 
 def get_parameter_groups(model):

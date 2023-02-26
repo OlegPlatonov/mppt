@@ -1,3 +1,4 @@
+import os
 import argparse
 from tqdm import tqdm
 
@@ -8,7 +9,7 @@ from torch.cuda.amp import autocast, GradScaler
 
 from model import MPPT
 from dataset import MoleculeDataset, collate_fn
-from utils import get_parameter_groups, get_lr_scheduler
+from utils import get_save_dir, get_parameter_groups, get_lr_scheduler
 
 
 def get_args():
@@ -84,9 +85,14 @@ def evaluate(model, data_loader, device, amp=False):
     mean_loss = total_loss / len(data_loader.dataset)
     print(f'Validation loss: {mean_loss:.4f}\n')
 
+    return mean_loss
+
 
 def main():
     args = get_args()
+
+    save_dir = get_save_dir(base_dir=args.save_dir, name=args.name)
+    print(f'Results will be saved to {save_dir}.')
 
     print('Preparing data...')
     train_dataset = MoleculeDataset(name=args.dataset, split='train')
@@ -117,10 +123,16 @@ def main():
                                  warmup_proportion=args.warmup_proportion)
 
     print('Starting training...')
+    best_val_loss = None
     for epoch in range(1, args.num_epochs + 1):
         train_epoch(model=model, data_loader=train_loader, optimizer=optimizer, scaler=scaler, scheduler=scheduler,
                     epoch=epoch, device=args.device, amp=args.amp)
-        evaluate(model=model, data_loader=val_loader, device=args.device, amp=args.amp)
+
+        val_loss = evaluate(model=model, data_loader=val_loader, device=args.device, amp=args.amp)
+
+        if best_val_loss is None or val_loss < best_val_loss:
+            best_val_loss = val_loss
+            torch.save(model.state_dict(), os.path.join(save_dir, 'model.pt'))
 
 
 if __name__ == '__main__':
