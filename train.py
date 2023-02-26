@@ -54,7 +54,7 @@ def train_epoch(model, data_loader, optimizer, scaler, scheduler, tb_writer, epo
                 device, amp=False, num_accumulation_steps=1):
 
     model.train()
-    optimizer.zero_grad()
+    optimizer.zero_grad(set_to_none=True)
     with tqdm(total=len(data_loader) * data_loader.batch_size, desc=f'Epoch {epoch}') as progress_bar:
         for i, (x, attn_mask, y) in enumerate(data_loader, 1):
             x, attn_mask, y = x.to(device), attn_mask.to(device), y.to(device)
@@ -78,7 +78,7 @@ def train_epoch(model, data_loader, optimizer, scaler, scheduler, tb_writer, epo
 
                 scaler.step(optimizer)
                 scaler.update()
-                optimizer.zero_grad()
+                optimizer.zero_grad(set_to_none=True)
                 scheduler.step()
                 step += 1
 
