@@ -6,6 +6,7 @@ import torch
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
 from torch.cuda.amp import autocast, GradScaler
+from torch.utils.tensorboard import SummaryWriter
 
 from model import MPPT
 from dataset import MoleculeDataset, collate_fn
@@ -48,8 +49,8 @@ def get_args():
     return args
 
 
-def train_epoch(model, data_loader, optimizer, scaler, scheduler, epoch, step, device, amp=False,
-                num_accumulation_steps=1):
+def train_epoch(model, data_loader, optimizer, scaler, scheduler, tb_writer, epoch, step, num_processed_samples,
+                device, amp=False, num_accumulation_steps=1):
 
     model.train()
     optimizer.zero_grad()
@@ -65,21 +66,26 @@ def train_epoch(model, data_loader, optimizer, scaler, scheduler, epoch, step, d
 
             loss_value = loss.item() * num_accumulation_steps
             cur_lr = scheduler.get_last_lr()[0]
-            progress_bar.update(len(x))
+            cur_batch_size = len(x)
+            num_processed_samples += cur_batch_size
+            tb_writer.add_scalar(tag='train loss', scalar_value=loss_value, global_step=num_processed_samples)
+            progress_bar.update(cur_batch_size)
             progress_bar.set_postfix(step=step, lr=f'{cur_lr:.2e}', loss=f'{loss_value:.4f}')
 
             if i % num_accumulation_steps == 0:
+                tb_writer.add_scalar(tag='lr', scalar_value=cur_lr, global_step=num_processed_samples)
+
                 scaler.step(optimizer)
                 scaler.update()
                 optimizer.zero_grad()
                 scheduler.step()
                 step += 1
 
-    return step
+    return step, num_processed_samples
 
 
 @torch.no_grad()
-def evaluate(model, data_loader, device, amp=False):
+def evaluate(model, data_loader, tb_writer, num_processed_samples, device, amp=False):
     print('Evaluating...')
     model.eval()
     total_loss = 0
@@ -95,6 +101,7 @@ def evaluate(model, data_loader, device, amp=False):
 
     mean_loss = total_loss / len(data_loader.dataset)
     print(f'Validation loss: {mean_loss:.4f}\n')
+    tb_writer.add_scalar(tag='val loss', scalar_value=mean_loss, global_step=num_processed_samples)
 
     return mean_loss
 
@@ -104,6 +111,8 @@ def main():
 
     save_dir = get_save_dir(base_dir=args.save_dir, name=args.name)
     print(f'Results will be saved to {save_dir}.')
+
+    tb_writer = SummaryWriter(log_dir=save_dir)
 
     print('Preparing data...')
     train_dataset = MoleculeDataset(name=args.dataset, split='train')
@@ -136,12 +145,16 @@ def main():
     print('Starting training...')
     best_val_loss = None
     step = 1
+    num_processed_samples = 0
     for epoch in range(1, args.num_epochs + 1):
-        step = train_epoch(model=model, data_loader=train_loader, optimizer=optimizer, scaler=scaler,
-                           scheduler=scheduler, epoch=epoch, step=step, device=args.device, amp=args.amp,
-                           num_accumulation_steps=args.num_accumulation_steps)
+        step, num_processed_samples = train_epoch(model=model, data_loader=train_loader, optimizer=optimizer,
+                                                  scaler=scaler, scheduler=scheduler, tb_writer=tb_writer, epoch=epoch,
+                                                  step=step, num_processed_samples=num_processed_samples,
+                                                  device=args.device, amp=args.amp,
+                                                  num_accumulation_steps=args.num_accumulation_steps)
 
-        val_loss = evaluate(model=model, data_loader=val_loader, device=args.device, amp=args.amp)
+        val_loss = evaluate(model=model, data_loader=val_loader, tb_writer=tb_writer,
+                            num_processed_samples=num_processed_samples, device=args.device, amp=args.amp)
 
         if best_val_loss is None or val_loss < best_val_loss:
             best_val_loss = val_loss
