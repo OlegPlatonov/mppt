@@ -48,7 +48,9 @@ def get_args():
     return args
 
 
-def train_epoch(model, data_loader, optimizer, scaler, scheduler, epoch, device, amp=False, num_accumulation_steps=1):
+def train_epoch(model, data_loader, optimizer, scaler, scheduler, epoch, step, device, amp=False,
+                num_accumulation_steps=1):
+
     model.train()
     optimizer.zero_grad()
     with tqdm(total=len(data_loader) * data_loader.batch_size, desc=f'Epoch {epoch}') as progress_bar:
@@ -61,14 +63,19 @@ def train_epoch(model, data_loader, optimizer, scaler, scheduler, epoch, device,
 
             scaler.scale(loss).backward()
 
+            loss_value = loss.item() * num_accumulation_steps
+            cur_lr = scheduler.get_last_lr()[0]
+            progress_bar.update(len(x))
+            progress_bar.set_postfix(step=step, lr=f'{cur_lr:.2e}', loss=f'{loss_value:.4f}')
+
             if i % num_accumulation_steps == 0:
                 scaler.step(optimizer)
                 scaler.update()
                 optimizer.zero_grad()
                 scheduler.step()
+                step += 1
 
-            progress_bar.update(len(x))
-            progress_bar.set_postfix(loss=f'{loss.item() * num_accumulation_steps:.4f}')
+    return step
 
 
 @torch.no_grad()
@@ -128,9 +135,11 @@ def main():
 
     print('Starting training...')
     best_val_loss = None
+    step = 1
     for epoch in range(1, args.num_epochs + 1):
-        train_epoch(model=model, data_loader=train_loader, optimizer=optimizer, scaler=scaler, scheduler=scheduler,
-                    epoch=epoch, device=args.device, amp=args.amp, num_accumulation_steps=args.num_accumulation_steps)
+        step = train_epoch(model=model, data_loader=train_loader, optimizer=optimizer, scaler=scaler,
+                           scheduler=scheduler, epoch=epoch, step=step, device=args.device, amp=args.amp,
+                           num_accumulation_steps=args.num_accumulation_steps)
 
         val_loss = evaluate(model=model, data_loader=val_loader, device=args.device, amp=args.amp)
 
