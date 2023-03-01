@@ -43,7 +43,7 @@ def get_args():
 
     parser.add_argument('--device', type=str, default='cuda:0')
     parser.add_argument('--amp', default=False, action='store_true')
-    parser.add_argument('--num_workers', type=int, default=4)
+    parser.add_argument('--num_workers', type=int, default=16)
 
     args = parser.parse_args()
 

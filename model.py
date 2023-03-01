@@ -22,14 +22,20 @@ class MPPT(nn.Module):
             type_vocab_size=1
         )
 
-        self.input_linear = nn.Linear(in_features=input_dim, out_features=hidden_dim)
+        self.input_mlp = nn.Sequential(
+            nn.Linear(in_features=input_dim, out_features=int(hidden_dim * hidden_dim_multiplier)),
+            nn.GELU(),
+            nn.LayerNorm(int(hidden_dim * hidden_dim_multiplier)),
+            nn.Linear(in_features=int(hidden_dim * hidden_dim_multiplier), out_features=hidden_dim),
+            nn.LayerNorm(hidden_dim)
+        )
 
         self.transformer = BertModel(transformer_config, add_pooling_layer=False)
 
         self.output_linear = nn.Linear(in_features=hidden_dim, out_features=num_targets)
 
     def forward(self, x, attn_mask):
-        transformer_inputs = self.input_linear(x)
+        transformer_inputs = self.input_mlp(x)
 
         position_ids = torch.zeros_like(attn_mask, dtype=int)
         token_type_ids = torch.zeros_like(attn_mask, dtype=int)

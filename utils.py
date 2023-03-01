@@ -15,7 +15,7 @@ def get_save_dir(base_dir, name):
 
 
 def get_parameter_groups(model):
-    no_weight_decay_names = ['bias', 'layernorm', 'input_linear']
+    no_weight_decay_names = ['bias', 'layernorm', 'input_mlp']
 
     parameter_groups = [
         {
