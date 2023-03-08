@@ -1,26 +1,105 @@
 import torch
 from torch import nn
-from transformers import BertModel
-from transformers.models.bert.configuration_bert import BertConfig
 
 
-class MPPT(nn.Module):
+class FeedForwardModule(nn.Module):
+    def __init__(self, dim, dim_multiplier, dropout=0):
+        super().__init__()
+
+        self.module = nn.Sequential(
+            nn.Linear(in_features=dim, out_features=int(dim * dim_multiplier)),
+            nn.Dropout(p=dropout),
+            nn.GELU(),
+            nn.Linear(in_features=int(dim * dim_multiplier), out_features=dim),
+            nn.Dropout(p=dropout)
+        )
+
+    def forward(self, x):
+        return self.module(x)
+
+
+class AttentionModule(nn.Module):
+    def __init__(self, dim, num_heads, dropout=0, attn_dropout=0):
+        super().__init__()
+
+        if dim % num_heads != 0:
+            raise ValueError('Dimension mismatch: hidden_dim should be a multiple of num_heads.')
+
+        self.num_heads = num_heads
+        self.head_dim = dim // num_heads
+        self.scale = 1 / self.head_dim ** 0.5
+
+        self.attn_dropout = attn_dropout
+
+        self.query_linear = nn.Linear(in_features=dim, out_features=dim)
+        self.key_linear = nn.Linear(in_features=dim, out_features=dim)
+        self.value_linear = nn.Linear(in_features=dim, out_features=dim)
+
+        self.output_linear = nn.Linear(in_features=dim, out_features=dim)
+        self.dropout = nn.Dropout(p=dropout)
+
+    def forward(self, x, attn_mask):
+        batch_size, length, dim = x.shape
+
+        queries = self.query_linear(x)
+        keys = self.key_linear(x)
+        values = self.value_linear(x)
+
+        queries = queries.reshape(batch_size, length, self.num_heads, self.head_dim)
+        keys = keys.reshape(batch_size, length, self.num_heads, self.head_dim)
+        values = values.reshape(batch_size, length, self.num_heads, self.head_dim)
+
+        queries = queries.transpose(1, 2)
+        keys = keys.transpose(1, 2)
+        values = values.transpose(1, 2)
+
+        attn_scores = self.scale * (queries @ keys.mT)
+
+        attn_mask = 1 - attn_mask
+        attn_mask[attn_mask == 1] = - torch.inf
+        attn_mask = attn_mask.unsqueeze(1).unsqueeze(2)
+        attn_scores += attn_mask
+
+        if self.attn_dropout > 0:
+            dropout_probs = self.attn_dropout * torch.ones_like(attn_scores)
+            dropout_mask = torch.bernoulli(dropout_probs).to(bool)
+            attn_scores[dropout_mask] = - torch.inf
+
+        attn_probs = torch.softmax(attn_scores, dim=-1)
+
+        x = attn_probs @ values
+        x = x.transpose(1, 2)
+        x = x.reshape(batch_size, length, dim)
+
+        x = self.output_linear(x)
+        x = self.dropout(x)
+
+        return x
+
+
+class TransformerModule(nn.Module):
+    def __init__(self, dim, num_heads, dim_multiplier, dropout, attn_dropout):
+        super().__init__()
+
+        self.attention_module = AttentionModule(dim=dim, num_heads=num_heads, dropout=dropout,
+                                                attn_dropout=attn_dropout)
+        self.layernorm_1 = nn.LayerNorm(dim)
+        self.feedforward_module = FeedForwardModule(dim=dim, dim_multiplier=dim_multiplier, dropout=dropout)
+        self.layernorm_2 = nn.LayerNorm(dim)
+
+    def forward(self, x, attn_mask):
+        x += self.attention_module(x, attn_mask)
+        x = self.layernorm_1(x)
+        x += self.feedforward_module(x)
+        x = self.layernorm_2(x)
+
+        return x
+
+
+class Model(nn.Module):
     def __init__(self, input_dim, num_targets, num_layers, hidden_dim, num_heads, hidden_dim_multiplier, dropout,
                  attn_dropout):
         super().__init__()
-
-        transformer_config = BertConfig(
-            num_hidden_layers=num_layers,
-            hidden_size=hidden_dim,
-            num_attention_heads=num_heads,
-            intermediate_size=int(hidden_dim * hidden_dim_multiplier),
-            hidden_act='gelu',
-            hidden_dropout_prob=dropout,
-            attention_probs_dropout_prob=attn_dropout,
-            vocab_size=1,
-            max_position_embeddings=1,
-            type_vocab_size=1
-        )
 
         self.input_mlp = nn.Sequential(
             nn.Linear(in_features=input_dim, out_features=int(hidden_dim * hidden_dim_multiplier)),
@@ -30,19 +109,21 @@ class MPPT(nn.Module):
             nn.LayerNorm(hidden_dim)
         )
 
-        self.transformer = BertModel(transformer_config, add_pooling_layer=False)
+        self.transformer_modules = nn.ModuleList(
+            TransformerModule(dim=hidden_dim, num_heads=num_heads, dim_multiplier=hidden_dim_multiplier,
+                              dropout=dropout, attn_dropout=attn_dropout)
+            for _ in range(num_layers)
+        )
 
         self.output_linear = nn.Linear(in_features=hidden_dim, out_features=num_targets)
 
     def forward(self, x, attn_mask):
-        transformer_inputs = self.input_mlp(x)
+        x = self.input_mlp(x)
 
-        position_ids = torch.zeros_like(attn_mask, dtype=int)
-        token_type_ids = torch.zeros_like(attn_mask, dtype=int)
+        for transformer_module in self.transformer_modules:
+            x = transformer_module(x=x, attn_mask=attn_mask)
 
-        transformer_outputs = self.transformer(inputs_embeds=transformer_inputs, attention_mask=attn_mask,
-                                               position_ids=position_ids, token_type_ids=token_type_ids)
-        molecule_embeddings = transformer_outputs['last_hidden_state'][:, 0]
+        molecule_embeddings = x[:, 0]
 
         preds = self.output_linear(molecule_embeddings).squeeze(1)
 

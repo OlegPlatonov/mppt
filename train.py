@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 from torch.cuda.amp import autocast, GradScaler
 from torch.utils.tensorboard import SummaryWriter
 
-from model import MPPT
+from model import Model
 from dataset import MoleculeDataset, collate_fn
 from utils import get_save_dir, get_parameter_groups, get_lr_scheduler
 
@@ -130,14 +130,14 @@ def main():
     num_steps = len(train_loader) * args.num_epochs
 
     print('Creating model...')
-    model = MPPT(input_dim=train_dataset.input_dim,
-                 num_targets=train_dataset.num_targets,
-                 num_layers=args.num_layers,
-                 hidden_dim=args.hidden_dim,
-                 num_heads=args.num_heads,
-                 hidden_dim_multiplier=args.hidden_dim_multiplier,
-                 dropout=args.dropout,
-                 attn_dropout=args.attn_dropout)
+    model = Model(input_dim=train_dataset.input_dim,
+                  num_targets=train_dataset.num_targets,
+                  num_layers=args.num_layers,
+                  hidden_dim=args.hidden_dim,
+                  num_heads=args.num_heads,
+                  hidden_dim_multiplier=args.hidden_dim_multiplier,
+                  dropout=args.dropout,
+                  attn_dropout=args.attn_dropout)
     model.to(args.device)
 
     parameter_groups = get_parameter_groups(model)
