@@ -52,6 +52,14 @@ def pad(molecules):
     return molecules, attn_mask
 
 
+def transform_attention_mask(attn_mask):
+    attn_mask = 1 - attn_mask
+    attn_mask[attn_mask == 1] = - torch.inf
+    attn_mask = attn_mask.unsqueeze(1).unsqueeze(2)
+
+    return attn_mask
+
+
 def collate_fn(batch):
     molecules = []
     targets = []
@@ -60,6 +68,7 @@ def collate_fn(batch):
         targets.append(target)
 
     molecules, attn_mask = pad(molecules)
+    attn_mask = transform_attention_mask(attn_mask)
     targets = torch.tensor(targets)
 
     return molecules, attn_mask, targets

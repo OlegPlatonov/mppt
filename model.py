@@ -54,10 +54,6 @@ class AttentionModule(nn.Module):
         values = values.transpose(1, 2)
 
         attn_scores = self.scale * (queries @ keys.mT)
-
-        attn_mask = 1 - attn_mask
-        attn_mask[attn_mask == 1] = - torch.inf
-        attn_mask = attn_mask.unsqueeze(1).unsqueeze(2)
         attn_scores += attn_mask
 
         if self.attn_dropout > 0:
