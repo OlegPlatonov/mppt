@@ -1,0 +1,11 @@
+python get_data.py --dataset ogbg-molpcba --output_name main --features_dict_dataset ogbg-molmuv
+python get_data.py --dataset ogbg-molpcba --output_name main --features_dict_dataset ogbg-molhiv
+python get_data.py --dataset ogbg-molpcba --output_name main --features_dict_dataset ogbg-moltoxcast
+python get_data.py --dataset ogbg-molpcba --output_name main --features_dict_dataset ogbg-moltox21
+python get_data.py --dataset ogbg-molpcba --output_name main --features_dict_dataset ogbg-molbbbp
+python get_data.py --dataset ogbg-molpcba --output_name main --features_dict_dataset ogbg-molbace
+python get_data.py --dataset ogbg-molpcba --output_name main --features_dict_dataset ogbg-molclintox
+python get_data.py --dataset ogbg-molpcba --output_name main --features_dict_dataset ogbg-molsider
+python get_data.py --dataset ogbg-molpcba --output_name main --features_dict_dataset ogbg-mollipo
+python get_data.py --dataset ogbg-molpcba --output_name main --features_dict_dataset ogbg-molesol
+python get_data.py --dataset ogbg-molpcba --output_name main --features_dict_dataset ogbg-molfreesolv

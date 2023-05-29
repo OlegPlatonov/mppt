@@ -1,0 +1,17 @@
+name: mppt
+channels:
+  - pytorch
+  - huggingface
+  - conda-forge
+dependencies:
+  - pip
+  - tqdm
+  - pyyaml
+  - numpy
+  - cudatoolkit=11.7
+  - pytorch
+  - transformers
+  - rdkit
+  - pip:
+    - ogb
+    - pytorch-ema
